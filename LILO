@@ -1,0 +1,227 @@
+shell.executable("/bin/bash")
+shell.prefix("source $HOME/.bashrc; conda activate LILO;")
+
+reference=config['reference']
+scheme=config['scheme']
+primers=config['primers']
+medaka_model=config['medaka']
+
+cov_lower_lim=40
+
+bed={}
+poolone=[]
+pooltwo=[]
+n=1
+overlaps=[]
+last=""
+for line in open(scheme):
+	line=line.rstrip()
+	line=line.split("\t")
+	if (n % 2) == 0:
+		ID="amplicon"+str(int(n/2)).zfill(2)
+		bed[ID][1]=line[2]
+		bed[ID][2]=str(int(line[2])-int(bed[ID][0]))
+		if (int(line[4][-1])% 2) == 0:
+			pooltwo.append(ID)
+		else:
+			poolone.append(ID)
+		last=line[2]
+	else:
+		ID="amplicon"+str(int(n/2+0.5)).zfill(2)
+		if ID not in bed.keys():
+			bed[ID]=[0,0,0]
+		bed[ID][0]=line[1]
+		if last !="":
+			overlaps.append(int(last)-int(line[1]))
+	n+=1
+	ref=line[0]
+
+expected_overlap=max(overlaps)
+ampli=[]
+
+for n in range(1,len(bed)+1):
+	ID="amplicon"+str(n).zfill(2)
+	ampli+=[ID]
+
+
+IDS, = glob_wildcards("raw/{sample}.fastq.gz")
+
+rule all:
+        input: expand("{sample}_Scaffold.fasta", sample=IDS)
+
+rule bed:
+	output:
+		bed="amplicons.bed"
+	input:
+		bed=scheme
+	run:
+		amplicons=open(output.bed, "w")
+		for n in range(1,len(bed)+1):
+		        ID="amplicon"+str(n).zfill(2)
+		        amplicons.write(ref+"\t"+bed[ID][0]+"\t"+bed[ID][1]+"\t"+ID+"\n")
+		amplicons.close()
+
+rule porechop:
+	output:
+		fastq="porechop/{sample}.fastq.gz"
+	input:
+		fastq="raw/{sample}.fastq.gz"
+	threads:8
+	shell:
+		"porechop -i {input.fastq} -o {output.fastq} --threads {threads}"
+
+rule ref_map:
+	output:
+		bam="{sample}/alignments/reads_to_ref.bam"
+	input:
+		reads="porechop/{sample}.fastq.gz",
+		ref=reference
+	shell:
+		"minimap2 -ax map-ont {input.ref} {input.reads} | samtools view -bS -| samtools sort -o {output.bam} -"
+
+rule assign:
+	output:
+		reads="{sample}/split/{amplicon}.fastq"
+	input:
+		bam="{sample}/alignments/reads_to_ref.bam",
+		reads="porechop/{sample}.fastq.gz",
+		amplicons="amplicons.bed"
+	params:
+		ampli="{amplicon}"
+	shell:
+		"bedtools intersect -F 0.9 -wa -wb -bed -abam {input.bam} -b amplicons.bed  | grep {params.ampli} - | awk '{{print $4}}' - | seqtk subseq {input.reads} - > {output.reads}"
+
+rule size_select:
+        output:
+                file="{sample}/reads/{amplicon}.fastq"
+        input:
+                reads="{sample}/split/{amplicon}.fastq"
+        params:
+                lower=lambda wildcards: (int(bed[wildcards.amplicon][2])-40)*0.95,
+                upper=lambda wildcards: (int(bed[wildcards.amplicon][2])-40)*1.05
+        shell:
+                """awk 'BEGIN {{FS = "\\t" ; OFS = "\\n"}} {{header = $0 ; getline seq ; getline qheader ; getline qseq ; if (length(seq) >= {params.lower} && length(seq) <= {params.upper}) {{print header, seq, qheader, qseq}}}}' < {input.reads} > {output.file}"""
+
+rule subset:
+	output:
+		file="{sample}/subset/{amplicon}.fastq"
+	input:
+		reads="{sample}/split/{amplicon}.fastq"
+	shell:
+		"seqtk sample {input.reads} 300 > {output.file}"
+
+rule read_select:
+        output:
+                file="{sample}/assemblies/{amplicon}.fa"
+        input:
+                reads="{sample}/subset/{amplicon}.fastq",
+                all_reads="{sample}/split/{amplicon}.fastq"
+        params:
+                sample="{sample}",
+                amplicon="{amplicon}"
+        run:
+                import subprocess
+                count=len(open(input.reads).readlines())
+
+                length=subprocess.getoutput(["awk '{if(NR%4==2) print length($1)}' "+ input.all_reads+ " | sort -n | awk ' { a[i++]=$1; } END { print a[int(i/2)]; }' -"])
+                if length!='':
+                    upper=int(length)*1.01
+                    lower=int(length)*0.99
+                    if count>(cov_lower_lim*4):
+                            shell("""cat {input.reads} | awk 'BEGIN {{FS = "\\t" ; OFS = "\\n"}} {{header = $0 ; getline seq ; getline qheader ; getline qseq ; if (length(seq) >= """+str(lower)+""" && length(seq) <= """+str(upper)+""") {{print header, seq, qheader, qseq}}}}' - | bioawk -c fastx ' {{ print meanqual($qual),$name,$seq,$qual}} ' - | sort -k 1 -rn | awk ' {{ printf("@%s\\n%s\\n+\\n%s\\n",$2,$3,$4) }} ' | head -n 2 | sed 's/@/>/g' > {output.file}""")
+                    else:
+                            shell("touch {output.file}")   
+                else:
+                        shell("touch {output.file}")
+rule pool:
+	output:
+		reads1="{sample}/poolone.fastq.gz",
+		amplicons1="{sample}/poolone.fa",
+		reads2="{sample}/pooltwo.fastq.gz",
+		amplicons2="{sample}/pooltwo.fa"
+	input:
+		reads1=expand("{{sample}}/subset/{amplicon}.fastq", amplicon=poolone),
+		amplicons1=expand("{{sample}}/assemblies/{amplicon}.fa", amplicon=poolone),
+		reads2=expand("{{sample}}/subset/{amplicon}.fastq", amplicon=pooltwo),
+		amplicons2=expand("{{sample}}/assemblies/{amplicon}.fa", amplicon=pooltwo)
+	run:
+		shell("cat {input.reads1} | gzip > {output.reads1} || true"),
+		shell("cat {input.amplicons1} > {output.amplicons1} || true"),
+		shell("cat {input.reads2} | gzip > {output.reads2} || true"),
+		shell("cat {input.amplicons2} > {output.amplicons2} || true")
+
+rule medaka:
+        output:
+                file="{sample}/medaka/medaka1_{n}/consensus.fasta"
+        input:
+                assembly="{sample}/{n}.fa",
+                reads="{sample}/{n}.fastq.gz"
+        params:
+                outdir="{sample}/medaka/medaka1_{n}/",
+                model=medaka_model
+        threads: 8
+        shell:
+                "medaka_consensus -f -g -t {threads} -i {input.reads} -d {input.assembly} -o {params.outdir} -m {params.model} "
+
+rule medaka2:
+        output:
+                file="{sample}/medaka/medaka2_{n}/consensus.fasta"
+        input:
+                assembly="{sample}/medaka/medaka1_{n}/consensus.fasta",
+                reads="{sample}/{n}.fastq.gz"
+        params:
+                outdir="{sample}/medaka/medaka2_{n}/",
+                model=medaka_model
+        threads: 8
+        shell:
+                "medaka_consensus -f -g -t {threads} -i {input.reads} -d {input.assembly} -o {params.outdir} -m {params.model}"
+
+rule medaka3:
+        output:
+                file="{sample}/medaka/medaka3_{n}/consensus.fasta"
+        input:
+                assembly="{sample}/medaka/medaka2_{n}/consensus.fasta",
+                reads="{sample}/{n}.fastq.gz"
+        params:
+                outdir="{sample}/medaka/medaka3_{n}/",
+                model=medaka_model
+        threads: 8
+        shell:
+                "medaka_consensus -f -t {threads} -g -i {input.reads} -d {input.assembly} -o {params.outdir} -m {params.model} "
+
+rule combine:
+	output:
+		ampli="{sample}/polished_amplicons.fa"
+	input:
+		list=expand("{{sample}}/medaka/medaka3_{n}/consensus.fasta", n=["poolone", "pooltwo"])
+	shell:
+		"""touch {input.list}
+		cat {input.list} > {output.ampli}"""
+
+rule reporechop:
+        output:
+                trimmed="{sample}/polished_trimmed.fa"
+        input:
+                reads="{sample}/polished_amplicons.fa",
+                prim=primers
+        threads: 8
+        shell:
+                "porechop --adapter_threshold 72 --end_threshold 72 --end_size 20 --min_trim_size 3 -f {input.prim} -i {input.reads} --threads {threads} --no_split -o {output.trimmed}"
+
+rule scaffold:
+	output:
+		scaffold="{sample}_Scaffold.fasta"
+	input:
+		contigs="{sample}/polished_trimmed.fa",
+		ref=reference
+	params:
+		prefix="{sample}",
+		name=">{sample}_scaffold",
+		ol=int(expected_overlap*1.5)	
+	shell:
+		"""conda activate scaffold_builder
+		scaffold_builder.py --min_trim_size -i 75 3 -t {params.ol} -g 80000 -r {input.ref} -q {input.contigs} -p {params.prefix}
+		sed '1 s/^.*$/{params.name}/' {params.prefix}_Scaffold.fasta > {output.scaffold}1
+		mv {output.scaffold}1 {output.scaffold} """
+
+
