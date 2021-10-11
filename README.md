@@ -22,7 +22,7 @@ conda install --file scaffold_builder.yaml
 
 # Usage
 Lilo assumes your reads are in a folder called *raw/* and have the suffix *.fastq.gz.* Multiple samples can be processed at the same time.  
-Lilo requires a config file detailing the location of a reference, a primer scheme (in the form of a primal scheme style bed file), and a primers.csv file (described below). Additionally the medaka model should be specified in accordance with the guppy model used to basecall the reads.
+Lilo requires a config file detailing the location of a reference, a primer scheme (in the form of a primal scheme style bed file), and a primers.csv file (described below). 
 ```
 conda activate LILO
 snakemake -k -s /path/to/LILO --configfile /path/to/config.file --cores N
@@ -30,8 +30,9 @@ snakemake -k -s /path/to/LILO --configfile /path/to/config.file --cores N
 It is recommended to run with -k so that one sample with insufficient coverage will not stop the other jobs completing.
 # Input specifications
 * **config.file**: an example config file has been provided.  
-* **Primer scheme**: As output by primal scheme, **removing alt primers**. Bed file of primer alignment locations. Columns: reference name, start, end, primer name, pool (must end with 1 or 2).  
+* **Primer scheme**: As output by primal scheme, **with alt primers removed**. Bed file of primer alignment locations. Columns: reference name, start, end, primer name, pool (must end with 1 or 2).  
 * **Primers.csv**: Comma delimited, includes alt primers, **with header line**. Columns: amplicon_name, F_primer_name, F_primer_sequence, R_primer_name, R_primer_sequence. If there are ambiguous bases in any of the primers it is recommended to expand these, the script expand.py will expand the described csv into a longer csv with IUPAC codes expanded.
+* **reference.fasta** Same reference used to make the scheme file.
 
 # Output
 Lilo uses the names from raw/ to name the output file. For a file named "sample.fastq.gz", the final assembly will be named "sample_Scaffold.fasta", and files produced during the pipeline will be in a folder called "sample". The output will contain amplicons that had at least 40X full length coverage. Missing amplicons will be represented by Ns. Any ambiguity at overlaps will be indicated with IUPAC codes.
@@ -39,5 +40,5 @@ Lilo uses the names from raw/ to name the output file. For a file named "sample.
 # Note
 * Use of the wrong fork for porechop will cause the pipeline to fail.  
 * Lilo is a work in progress and has been tested on a limited number of references, amplicon sizes, and overlap sizes, I recommend checking the results carefully.    
-* The pipeline currently assumes that any structural variants do not change the length of the amplicon by more than 5%. If alt amplicons produce a product of a different length to the original amplicon they may not be allocated to their amplicon.  
+* The pipeline currently assumes that any structural variants do not change the length of the amplicon by more than 5%. If alt amplicons produce a product of a different length to the original amplicon they may not be allocated to their amplicon. Editing it to work better with alt amplicons is on my to do list.  
 * Should not be used with reads produced with rapid kits, the pipeline assumes the reads are the length of the amplicons.
