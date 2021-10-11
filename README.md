@@ -35,6 +35,7 @@ It is recommended to run with -k so that one sample with insufficient coverage w
 Lilo uses the names from raw/ to name the output file. For a file named "sample.fastq.gz", the final assembly will be named "sample_Scaffold.fasta", and files produced during the pipeline will be in a folder called "sample". The output will contain amplicons that had at least 40X full length coverage. Missing amplicons will be represented by Ns. Any ambiguity at overlaps will be indicated with IUPAC codes.
 
 # Note
-Use of the wrong fork for porechop will cause the pipeline to fail.
-Lilo is a work in progress and has been tested on a limited number of references, amplicon sizes, and overlap sizes, I recommend checking the results carefully.
-If the pipeline fails it is usually because there is insufficient coverage.
+Use of the wrong fork for porechop will cause the pipeline to fail.  
+Lilo is a work in progress and has been tested on a limited number of references, amplicon sizes, and overlap sizes, I recommend checking the results carefully.  
+If the pipeline fails it is usually because there is insufficient coverage.  
+The pipeline currently assumes that any structural variants do not change the length of the amplicon by more than 5%. If alt amplicons produce a product of a different length to the original amplicon they may not be allocated to their amplicon.
