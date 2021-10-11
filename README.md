@@ -1,4 +1,4 @@
-![image](https://user-images.githubusercontent.com/12270542/136856184-37347b2e-4934-421c-989f-2ac3be4f51e3.png)
+![logo_dark_white](https://user-images.githubusercontent.com/12270542/136858030-a9df2ec0-90af-472e-91f5-b7a224dd7289.png)
 
 
 Stitch together Nanopore tiled amplicon data using a reference guided approach
