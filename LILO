@@ -216,7 +216,7 @@ rule scaffold:
 		ref=reference
 	params:
 		prefix="{sample}",
-		name=">{sample}_scaffold",
+		name=">{sample}_Lilo_scaffold",
 		ol=int(expected_overlap*1.5)	
 	shell:
 		"""conda activate scaffold_builder
