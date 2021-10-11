@@ -40,6 +40,6 @@ Lilo uses the names from raw/ to name the output file. For a file named "sample.
 ## Note
 * Use of the wrong fork for porechop will cause the pipeline to fail.  
 * Lilo is a work in progress and has been tested on a limited number of references, amplicon sizes, and overlap sizes, I recommend checking the results carefully for each new scheme.    
-* The pipeline currently assumes that any structural variants do not change the length of the amplicon by more than 5%. If alt amplicons produce a product of a different length to the original amplicon they may not be allocated to their amplicon. Editing it to work better with alt amplicons is on my to do list.  
+* The pipeline currently assumes that any structural variants are contained between the primers of an amplicon and do not change the length of the amplicon by more than 5%. If alt amplicons produce a product of a different length to the original amplicon they may not be allocated to their amplicon. Editing it to work better with alt amplicons is on my to do list.  
 * Should not be used with reads produced with rapid kits, the pipeline assumes the reads are the length of the amplicons.
 * Do let me know if it destroys any cities or steals everyone's left shoe.
