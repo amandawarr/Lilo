@@ -1,4 +1,5 @@
-# Lilo
+![image](https://user-images.githubusercontent.com/12270542/136856184-37347b2e-4934-421c-989f-2ac3be4f51e3.png)
+
 
 Stitch together Nanopore tiled amplicon data using a reference guided approach
 
