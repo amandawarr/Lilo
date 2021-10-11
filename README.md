@@ -4,7 +4,7 @@ Stitch together Nanopore tiled amplicon data using a reference guided approach
 
 Tiled amplicon data, like those produced from primers designed with primal scheme (https://github.com/aresti/primalscheme), are typically assembled using methods that involve aligning them to a reference and polishing the reference into a sequence that represents the reads. This works very well for obtaining a genome with SNPs and small indels representative of the reads. However in cases where the reads cannot be mapped well to the reference (e.g. genomes containing hypervariable regions between primers) or in cases where large structrual variants are expected this method may fail as polishing tools expect the reference to originate from the reads.
 
-Lilo uses a reference only to assign reads to the amplicon they originated from and to order and orient the polished amplicons, no reference sequence is in the final assembly. Once assigned to an amplicon, a read with high average base quality of roughly median length for that amplicon is selected as a reference and polished with 300x coverage three times with medaka. The polished amplicons have primers removed with porechop (fork: https://github.com/sclamons/Porechop-1) and are then assembled with scaffold_builder (https://github.com/metageni/Scaffold_builder). 
+Lilo uses a reference only to assign reads to the amplicon they originated from and to order and orient the polished amplicons, no reference sequence is in the final assembly. Once assigned to an amplicon, a read with high average base quality of roughly median length for that amplicon is selected as a reference and polished with up to 300x coverage three times with medaka. The polished amplicons have primers removed with porechop (fork: https://github.com/sclamons/Porechop-1) and are then assembled with scaffold_builder (https://github.com/metageni/Scaffold_builder). 
 
 Lilo is likely more reliable on larger overlaps, but has been tested on SARS-CoV-2 with artic V3 primers with sensible results. It has also been tested on 7kb and 4kb amplicons with ~100-1000bp overlaps for ASFV, PRRSV-1 and PRRSV-2.
 
@@ -13,9 +13,9 @@ Install this fork of porechop and make sure it is in your path:
 https://github.com/sclamons/Porechop-1
 
 # Installation
-*git clone https://github.com/amandawarr/Lilo
-cd Lilo
-conda install --file LILO.yaml
+*git clone https://github.com/amandawarr/Lilo  
+cd Lilo  
+conda install --file LILO.yaml  
 conda install --file scaffold_builder.yaml*
 
 # Usage
