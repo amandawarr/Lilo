@@ -206,7 +206,7 @@ rule reporechop:
                 prim=primers
         threads: 8
         shell:
-                "porechop --adapter_threshold 72 --end_threshold 72 --end_size 20 --min_trim_size 3 -f {input.prim} -i {input.reads} --threads {threads} --no_split -o {output.trimmed}"
+                "porechop --adapter_threshold 72 --end_threshold 70 --end_size 30 --extra_end_trim 5 --min_trim_size 3 -f {input.prim} -i {input.reads} --threads {threads} --no_split -o {output.trimmed}"
 
 rule scaffold:
 	output:
@@ -221,7 +221,6 @@ rule scaffold:
 	shell:
 		"""conda activate scaffold_builder
 		scaffold_builder.py --min_trim_size -i 75 3 -t {params.ol} -g 80000 -r {input.ref} -q {input.contigs} -p {params.prefix}
-		sed '1 s/^.*$/{params.name}/' {params.prefix}_Scaffold.fasta > {output.scaffold}1
-		mv {output.scaffold}1 {output.scaffold} """
+		sed -i '1 s/^.*$/{params.name}/' {params.prefix}_Scaffold.fasta"""
 
 
