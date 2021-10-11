@@ -1,0 +1,4 @@
+scheme: /path/to/scheme.bed
+reference: /path/to/reference.fasta
+primers: /path/to/_primers.csv
+medaka: r941_min_sup_g507
