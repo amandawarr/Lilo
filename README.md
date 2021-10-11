@@ -23,7 +23,7 @@ Lilo assumes your reads are in a folder called *raw/* and have the suffix *.fast
 Lilo requires a config file detailing the location of a reference, a primer scheme (in the form of a primal scheme style bed file), and a primers.csv file (described below). Additionally the medaka model should be specified in accordance with the guppy model used to basecall the reads.
 
 *conda activate LILO
-snakemake -k -s /path/to/LILO --config /path/to/config.file --cores N*
+snakemake -k -s /path/to/LILO --configfile /path/to/config.file --cores N*
 
 It is recommended to run with -k so that one sample with insufficient coverage will not stop the other jobs completing.
 # Input specifications
