@@ -10,6 +10,7 @@ Lilo uses a reference only to assign reads to the amplicon they originated from 
 Lilo has been tested on SARS-CoV-2 with artic V3 primers. It has also been tested on 7kb and 4kb amplicons with ~100-1000bp overlaps for ASFV, PRRSV-1 and PRRSV-2, schemes for which will be made available in the near future.
 
 ## Requirments not covered by conda
+Install Conda :) 
 Install this fork of porechop and make sure it is in your path:
 https://github.com/sclamons/Porechop-1
 
