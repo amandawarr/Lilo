@@ -17,8 +17,8 @@ https://github.com/sclamons/Porechop-1
 ```
 git clone https://github.com/amandawarr/Lilo  
 cd Lilo  
-conda install --file LILO.yaml  
-conda install --file scaffold_builder.yaml
+conda env create --file LILO.yaml  
+conda env create --file scaffold_builder.yaml
 ```
 
 ## Usage
