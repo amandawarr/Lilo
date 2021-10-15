@@ -220,7 +220,7 @@ rule scaffold:
 		ol=int(expected_overlap*1.5)	
 	shell:
 		"""conda activate scaffold_builder
-		scaffold_builder.py --min_trim_size -i 75 3 -t {params.ol} -g 80000 -r {input.ref} -q {input.contigs} -p {params.prefix}
+		scaffold_builder.py -i 75 -t {params.ol} -g 80000 -r {input.ref} -q {input.contigs} -p {params.prefix}
 		sed -i '1 s/^.*$/{params.name}/' {params.prefix}_Scaffold.fasta"""
 
 
