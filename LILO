@@ -38,10 +38,12 @@ for line in open(scheme):
 
 expected_overlap=max(overlaps)
 ampli=[]
+lengths=[]
 
 for n in range(1,len(bed)+1):
 	ID="amplicon"+str(n).zfill(2)
 	ampli+=[ID]
+	lengths+=[int(bed[ID][2])]
 
 
 IDS, = glob_wildcards("raw/{sample}.fastq.gz")
@@ -198,11 +200,22 @@ rule combine:
 		"""touch {input.list}
 		cat {input.list} > {output.ampli}"""
 
+rule minimap_clip:
+        output:
+                contigs="{sample}/polished_clipped_amplicons.fa"
+        input:
+                consensus="{sample}/polished_amplicons.fa",
+                ref=reference
+        params:
+                len=min(lengths)*0.8
+        shell:
+                """minimap2 {input.ref} {input.consensus} | awk -v OFS="\\t" '{{if ($4-$3>= {params.len}) {{print $1, $3+10, $4-10}}}}' - | bedtools sort -i - | bedtools getfasta -fi {input.consensus} -bed - > {output.contigs}"""
+
 rule reporechop:
         output:
                 trimmed="{sample}/polished_trimmed.fa"
         input:
-                reads="{sample}/polished_amplicons.fa",
+                reads="{sample}/polished_clipped_amplicons.fa",
                 prim=primers
         threads: 8
         shell:
