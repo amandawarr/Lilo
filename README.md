@@ -32,7 +32,7 @@ snakemake -k -s /path/to/LILO --configfile /path/to/config.file --cores N
 It is recommended to run with -k so that one sample with insufficient coverage will not stop the other jobs completing.
 ## Input specifications
 * **config.file**: an example config file has been provided.  
-* **Primer scheme**: As output by primal scheme, **with alt primers removed**. Bed file of primer alignment locations. Columns: reference name, start, end, primer name, pool (must end with 1 or 2).  
+* **Primer scheme**: As output by primal scheme, **with alt primers removed**. Bed file of primer alignment locations. Columns: reference name, primer start, primer end, primer name, pool (must end with 1 or 2).  
 * **Primers.csv**: Comma delimited, includes alt primers, **with header line**. Columns: amplicon_name, F_primer_name, F_primer_sequence, R_primer_name, R_primer_sequence. If there are a lot of degenerate bases in any of the primers it is recommended to expand these, the script expand.py will expand the described csv into a longer csv with IUPAC codes expanded.
 * **reference.fasta** Same reference used to make the scheme file.
 
