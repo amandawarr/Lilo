@@ -1,5 +1,5 @@
 shell.executable("/bin/bash")
-shell.prefix("source $HOME/.bashrc; conda activate LILO;")
+shell.prefix("source $HOME/.bashrc;")
 
 reference=config['reference']
 scheme=config['scheme']
@@ -60,7 +60,7 @@ rule bed:
 		amplicons=open(output.bed, "w")
 		for n in range(1,len(bed)+1):
 		        ID="amplicon"+str(n).zfill(2)
-		        amplicons.write(ref+"\t"+bed[ID][0]+"\t"+bed[ID][1]+"\t"+ID+"\n")
+		        amplicons.write(ref+"\t"+str(bed[ID][0])+"\t"+str(bed[ID][1])+"\t"+ID+"\n")
 		amplicons.close()
 
 rule porechop:
@@ -232,7 +232,8 @@ rule scaffold:
 		name=">{sample}_Lilo_scaffold",
 		ol=int(expected_overlap*1.5)	
 	shell:
-		"""conda activate scaffold_builder
+		"""source $CONDA_PREFIX/etc/profile.d/conda.sh
+		conda activate scaffold_builder
 		scaffold_builder.py -i 75 -t {params.ol} -g 80000 -r {input.ref} -q {input.contigs} -p {params.prefix}
 		sed -i '1 s/^.*$/{params.name}/' {params.prefix}_Scaffold.fasta"""
 
