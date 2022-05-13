@@ -23,7 +23,7 @@ conda env create --file scaffold_builder.yaml
 ```
 
 ## Usage
-Lilo assumes your reads are in a folder called *raw/* and have the suffix *.fastq.gz.* Multiple samples can be processed at the same time.  
+Lilo assumes your reads are in a folder called *raw/* in the current working directory and have the suffix *.fastq.gz.* Multiple samples can be processed at the same time.  
 Lilo requires a config file detailing the location of a reference, a primer scheme (in the form of a primal scheme style bed file), and a primers.csv file (described below). 
 ```
 conda activate LILO
