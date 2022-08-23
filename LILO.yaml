@@ -152,7 +152,7 @@ dependencies:
   - markdown=3.3.4=pyhd8ed1ab_0
   - markupsafe=2.0.1=py38h497a2fe_0
   - matplotlib-base=3.4.3=py38hf4fb855_1
-  - medaka=1.4.4=py38h130def0_0
+  - medaka>=1.4.4=py38h130def0_0
   - minimap2=2.22=h5bf99c6_0
   - more-itertools=8.10.0=pyhd8ed1ab_0
   - multidict=5.1.0=py38h497a2fe_1
