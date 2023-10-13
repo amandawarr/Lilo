@@ -1,0 +1,7 @@
+setup.py
+lilo.egg-info/PKG-INFO
+lilo.egg-info/SOURCES.txt
+lilo.egg-info/dependency_links.txt
+lilo.egg-info/entry_points.txt
+lilo.egg-info/requires.txt
+lilo.egg-info/top_level.txt

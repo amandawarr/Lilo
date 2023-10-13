@@ -1,0 +1,2 @@
+[console_scripts]
+lilo = lilo.lilo:main
