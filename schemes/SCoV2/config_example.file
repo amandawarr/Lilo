@@ -1,4 +1,0 @@
-scheme: /path/to/nCoV-2019.noalt.scheme.bed
-reference: /path/to/nCoV-2019.reference.fasta
-primers: /path/to/SARS_primers.csv
-medaka: r941_min_hac_g507
