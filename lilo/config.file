@@ -2,3 +2,14 @@ scheme: /path/to/scheme.bed
 reference: /path/to/reference.fasta
 primers: /path/to/_primers.csv
 medaka: r941_min_sup_g507
+cov_lower_lim: 40
+overlap: 0.9
+coverage_cutoff: 300
+clip_length_cutoff: 0.8
+adapter_threshold: 72
+end_threshold: 70
+end_size: 30
+extra_end_trim: 5
+min_trim_size: 3
+scaffold_i: 75
+scaffold_g: 80000

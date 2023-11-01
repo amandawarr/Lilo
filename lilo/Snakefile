@@ -1,240 +1,436 @@
 shell.executable("/bin/bash")
-shell.prefix("source $HOME/.bashrc;")
+
+from Bio import SeqIO
+import statistics
+import heapq
+
+
+###############################################################################
+##
+## Functions
+##
+
+def read_scheme(scheme_file):
+    bed = {}
+    poolone = []
+    pooltwo = []
+    overlaps = []
+    n = 1
+    last = ""
+    for line in open(scheme_file):
+        line = line.rstrip().split("\t")
+        ID = f"amplicon{int(n / 2 + 0.5):02}"
+
+        if n % 2 == 0:
+            bed[ID][1] = line[2]
+            bed[ID][2] = str(int(line[2]) - int(bed[ID][0]))
+
+            if int(line[4][-1]) % 2 == 0:
+                pooltwo.append(ID)
+            else:
+                poolone.append(ID)
+
+            last = line[2]
+        else:
+            if ID not in bed:
+                bed[ID] = [0, 0, 0]
+            bed[ID][0] = line[1]
+            if last:
+                overlaps.append(int(last) - int(line[1]))
+
+        n += 1
+    ref = line[0]
+    return bed, poolone, pooltwo, overlaps, ref
+
+def calculate_lists(bed):
+    ampli = []
+    lengths = []
+    for n in range(1, len(bed) + 1):
+        ID = f"amplicon{n:02}"
+        ampli.append(ID)
+        lengths.append(int(bed[ID][2]))
+    return ampli, lengths
+
+
+
+def read_select(input_reads, input_all_reads, output_file, cov_lower_lim=40):
+    # Task 1: Count the number of lines
+    count = sum(1 for _ in SeqIO.parse(input_reads, "fastq"))
+
+    # Task 2: Calculate the median read length
+    lengths = [len(record.seq) for record in SeqIO.parse(input_all_reads, "fastq")]
+    if lengths:
+        median_length = statistics.median(lengths)
+        lower = int(median_length * 0.99)
+        upper = int(median_length * 1.01)
+
+        # Task 3 & 4: Filter reads, sort them and write output
+        if count > (cov_lower_lim * 4):
+            # Using a heap to keep track of top 2 sequences based on mean quality
+            heap = []
+            for record in SeqIO.parse(input_reads, "fastq"):
+                length = len(record.seq)
+                if length >= lower and length <= upper:
+                    mean_qual = statistics.mean(record.letter_annotations["phred_quality"])
+                    heapq.heappush(heap, (mean_qual, record))
+
+                    # Keep only top 2 reads in heap
+                    if len(heap) > 2:
+                        heapq.heappop(heap)
+
+            # Write the output in FASTA format
+            with open(output_file, "w") as out_f:
+                for _, record in sorted(heap, reverse=True)[:2]:
+                    out_f.write(f">{record.id}\n{record.seq}\n")
+        else:
+            open(output_file, 'w').close()  # Create an empty file
+    else:
+        open(output_file, 'w').close()  # Create an empty file
+
+
+###############################################################################
+##
+## Variables
+##
 
 reference=config['reference']
 scheme=config['scheme']
 primers=config['primers']
 medaka_model=config['medaka']
 
-cov_lower_lim=40
+THREADS_MULTI=8
 
-bed={}
-poolone=[]
-pooltwo=[]
-n=1
-overlaps=[]
-last=""
-for line in open(scheme):
-	line=line.rstrip()
-	line=line.split("\t")
-	if (n % 2) == 0:
-		ID="amplicon"+str(int(n/2)).zfill(2)
-		bed[ID][1]=line[2]
-		bed[ID][2]=str(int(line[2])-int(bed[ID][0]))
-		if (int(line[4][-1])% 2) == 0:
-			pooltwo.append(ID)
-		else:
-			poolone.append(ID)
-		last=line[2]
-	else:
-		ID="amplicon"+str(int(n/2+0.5)).zfill(2)
-		if ID not in bed.keys():
-			bed[ID]=[0,0,0]
-		bed[ID][0]=line[1]
-		if last !="":
-			overlaps.append(int(last)-int(line[1]))
-	n+=1
-	ref=line[0]
-
-expected_overlap=max(overlaps)
-ampli=[]
-lengths=[]
-
-for n in range(1,len(bed)+1):
-	ID="amplicon"+str(n).zfill(2)
-	ampli+=[ID]
-	lengths+=[int(bed[ID][2])]
-
-
+bed, poolone, pooltwo, overlaps, ref = read_scheme(scheme)
+expected_overlap = max(overlaps)
+ampli, lengths = calculate_lists(bed)
 IDS, = glob_wildcards("raw/{sample}.fastq.gz")
+
+###############################################################################
+##
+## Rules
+##
 
 rule all:
         input: expand("{sample}_Scaffold.fasta", sample=IDS)
 
 rule bed:
-	output:
-		bed="amplicons.bed"
-	input:
-		bed=scheme
-	run:
-		amplicons=open(output.bed, "w")
-		for n in range(1,len(bed)+1):
-		        ID="amplicon"+str(n).zfill(2)
-		        amplicons.write(ref+"\t"+str(bed[ID][0])+"\t"+str(bed[ID][1])+"\t"+ID+"\n")
-		amplicons.close()
+    input:
+        bed=scheme
+    output:
+        bed="amplicons.bed"
+    log:
+        out="logs/amplicons_bed.log",
+        err="logs/amplicons_bed_err.log"
+    benchmark:
+        "benchmarks/amplicons_bed_benchmark.txt"
+    params:
+        bed=bed,
+        ref=ref
+    threads: 1
+    message:
+        "Creating the BED file for amplicons."
+    run:
+        with open(output.bed, "w") as amplicons:
+            for n in range(1, len(params.bed) + 1):
+                ID = "amplicon" + str(n).zfill(2)
+                amplicons.write(f"{params.ref}\t{params.bed[ID][0]}\t{params.bed[ID][1]}\t{ID}\n")
+
 
 rule porechop:
-	output:
-		fastq="porechop/{sample}.fastq.gz"
-	input:
-		fastq="raw/{sample}.fastq.gz"
-	threads:8
-	shell:
-		"porechop -i {input.fastq} -o {output.fastq} --threads {threads}"
+    input:
+        fastq="raw/{sample}.fastq.gz"
+    output:
+        fastq="porechop/{sample}.fastq.gz"
+    log:
+        stdout="logs/porechop/{sample}_stdout.log",
+        stderr="logs/porechop/{sample}_stderr.log"
+    benchmark:
+        "benchmarks/porechop/{sample}_benchmark.txt"
+    threads: THREADS_MULTI
+    message:
+        "Running Porechop on sample {wildcards.sample}."
+    conda:
+        "envs/porechop.yaml" # Path to the Conda environment file
+    shell:
+        """
+        porechop -i {input.fastq} -o {output.fastq} --threads {threads} \
+        1> {log.stdout} 2> {log.stderr}
+        """
 
 rule ref_map:
-	output:
-		bam="{sample}/alignments/reads_to_ref.bam"
-	input:
-		reads="porechop/{sample}.fastq.gz",
-		ref=reference
-	shell:
-		"minimap2 -ax map-ont {input.ref} {input.reads} | samtools view -bS -| samtools sort -o {output.bam} -"
+    input:
+        reads="porechop/{sample}.fastq.gz",
+        ref=reference
+    output:
+        bam="{sample}/alignments/reads_to_ref.bam"
+    log:
+        stdout="logs/ref_map/{sample}_stdout.log",
+        stderr="logs/ref_map/{sample}_stderr.log"
+    benchmark:
+        "benchmarks/ref_map/{sample}_benchmark.txt"
+    threads: 8
+    message:
+        "Mapping reads for sample {wildcards.sample} to the reference."
+    conda:
+        "envs/ref_map.yaml"  # Path to the Conda environment file
+    params:
+        extra="-ax map-ont"  # You can customize this
+    shell:
+        """
+        minimap2 {params.extra} {input.ref} {input.reads} | \
+        samtools view -bS - | \
+        samtools sort -@ {threads} -o {output.bam} \
+        1> {log.stdout} 2> {log.stderr}
+        """
+
 
 rule assign:
-	output:
-		reads="{sample}/split/{amplicon}.fastq"
-	input:
-		bam="{sample}/alignments/reads_to_ref.bam",
-		reads="porechop/{sample}.fastq.gz",
-		amplicons="amplicons.bed"
-	params:
-		ampli="{amplicon}"
-	shell:
-		"bedtools intersect -F 0.9 -wa -wb -bed -abam {input.bam} -b amplicons.bed  | grep {params.ampli} - | awk '{{print $4}}' - | seqtk subseq {input.reads} - > {output.reads}"
+    input:
+        bam="{sample}/alignments/reads_to_ref.bam",
+        reads="porechop/{sample}.fastq.gz",
+        amplicons="amplicons.bed"
+    output:
+        reads="{sample}/split/{amplicon}.fastq"
+    log:
+        stdout="logs/assign/{sample}_{amplicon}_stdout.log",
+        stderr="logs/assign/{sample}_{amplicon}_stderr.log"
+    benchmark:
+        "benchmarks/assign/{sample}_{amplicon}_benchmark.txt"
+    threads: 1
+    message:
+        "Assigning reads to amplicon {params.ampli} for sample {wildcards.sample}."
+    conda:
+        "envs/assign.yaml"
+    params:
+        ampli="{amplicon}",
+        overlap=config['overlap']
+    shell:
+        """
+        (bedtools intersect -F {params.overlap} -wa -wb -bed -abam {input.bam} -b {input.amplicons} | \
+        grep {params.ampli} - | awk '{{print $4}}' - | \
+        seqtk subseq {input.reads} - > {output.reads}) \
+        1> {log.stdout} 2> {log.stderr}
+        """
+
 
 rule size_select:
-        output:
-                file="{sample}/reads/{amplicon}.fastq"
-        input:
-                reads="{sample}/split/{amplicon}.fastq"
-        params:
-                lower=lambda wildcards: (int(bed[wildcards.amplicon][2])-40)*0.95,
-                upper=lambda wildcards: (int(bed[wildcards.amplicon][2])-40)*1.05
-        shell:
-                """awk 'BEGIN {{FS = "\\t" ; OFS = "\\n"}} {{header = $0 ; getline seq ; getline qheader ; getline qseq ; if (length(seq) >= {params.lower} && length(seq) <= {params.upper}) {{print header, seq, qheader, qseq}}}}' < {input.reads} > {output.file}"""
+    input:
+        reads="{sample}/split/{amplicon}.fastq"
+    output:
+        file="{sample}/reads/{amplicon}.fastq"
+    log:
+        stdout="logs/size_select/{sample}_{amplicon}_stdout.log",
+        stderr="logs/size_select/{sample}_{amplicon}_stderr.log"
+    benchmark:
+        "benchmarks/size_select/{sample}_{amplicon}_benchmark.txt"
+    threads: 1
+    message:
+        "Performing size selection on amplicon {wildcards.amplicon} for sample {wildcards.sample}."
+    conda:
+        "envs/assign.yaml"
+    params:
+        lower=lambda wildcards: (int(bed[wildcards.amplicon][2])-config['cov_lower_lim'])*0.95,
+        upper=lambda wildcards: (int(bed[wildcards.amplicon][2])-config['cov_lower_lim'])*1.05
+    shell:
+        """
+        (awk 'BEGIN {{FS = "\\t" ; OFS = "\\n"}} {{header = $0 ; getline seq ; getline qheader ; getline qseq ; if (length(seq) >= {params.lower} && length(seq) <= {params.upper}) {{print header, seq, qheader, qseq}}}}' < {input.reads} > {output.file}) \
+        1> {log.stdout} 2> {log.stderr}
+        """
 
 rule subset:
-	output:
-		file="{sample}/subset/{amplicon}.fastq"
-	input:
-		reads="{sample}/split/{amplicon}.fastq"
-	shell:
-		"seqtk sample {input.reads} 300 > {output.file}"
+    input:
+        reads="{sample}/split/{amplicon}.fastq"
+    output:
+        file="{sample}/subset/{amplicon}.fastq"
+    log:
+        stdout="logs/subset/{sample}_{amplicon}_stdout.log",
+        stderr="logs/subset/{sample}_{amplicon}_stderr.log"
+    benchmark:
+        "benchmarks/subset/{sample}_{amplicon}_benchmark.txt"
+    threads: 1
+    message:
+        "Subsetting reads for amplicon {wildcards.amplicon} in sample {wildcards.sample}."
+    conda:
+        "envs/assign.yaml"
+    params:
+        n_reads=config['coverage_cutoff']
+    shell:
+        """
+        seqtk sample {input.reads} {params.n_reads} > {output.file}
+        """
+
 
 rule read_select:
-        output:
-                file="{sample}/assemblies/{amplicon}.fa"
-        input:
-                reads="{sample}/subset/{amplicon}.fastq",
-                all_reads="{sample}/split/{amplicon}.fastq"
-        params:
-                sample="{sample}",
-                amplicon="{amplicon}"
-        run:
-                import subprocess
-                count=len(open(input.reads).readlines())
+    output:
+        file="{sample}/assemblies/{amplicon}.fa"
+    input:
+        reads="{sample}/subset/{amplicon}.fastq",
+        all_reads="{sample}/split/{amplicon}.fastq"
+    params:
+        sample="{sample}",
+        amplicon="{amplicon}"
+    run:
+        read_select(input.reads, input.all_reads, output.file)
 
-                length=subprocess.getoutput(["awk '{if(NR%4==2) print length($1)}' "+ input.all_reads+ " | sort -n | awk ' { a[i++]=$1; } END { print a[int(i/2)]; }' -"])
-                if length!='':
-                    upper=int(length)*1.01
-                    lower=int(length)*0.99
-                    if count>(cov_lower_lim*4):
-                            shell("""cat {input.reads} | awk 'BEGIN {{FS = "\\t" ; OFS = "\\n"}} {{header = $0 ; getline seq ; getline qheader ; getline qseq ; if (length(seq) >= """+str(lower)+""" && length(seq) <= """+str(upper)+""") {{print header, seq, qheader, qseq}}}}' - | bioawk -c fastx ' {{ print meanqual($qual),$name,$seq,$qual}} ' - | sort -k 1 -rn | awk ' {{ printf("@%s\\n%s\\n+\\n%s\\n",$2,$3,$4) }} ' | head -n 2 | sed 's/@/>/g' > {output.file}""")
-                    else:
-                            shell("touch {output.file}")   
-                else:
-                        shell("touch {output.file}")
+
+
+
+
 rule pool:
-	output:
-		reads1="{sample}/poolone.fastq.gz",
-		amplicons1="{sample}/poolone.fa",
-		reads2="{sample}/pooltwo.fastq.gz",
-		amplicons2="{sample}/pooltwo.fa"
-	input:
-		reads1=expand("{{sample}}/subset/{amplicon}.fastq", amplicon=poolone),
-		amplicons1=expand("{{sample}}/assemblies/{amplicon}.fa", amplicon=poolone),
-		reads2=expand("{{sample}}/subset/{amplicon}.fastq", amplicon=pooltwo),
-		amplicons2=expand("{{sample}}/assemblies/{amplicon}.fa", amplicon=pooltwo)
-	run:
-		shell("cat {input.reads1} | gzip > {output.reads1} || true"),
-		shell("cat {input.amplicons1} > {output.amplicons1} || true"),
-		shell("cat {input.reads2} | gzip > {output.reads2} || true"),
-		shell("cat {input.amplicons2} > {output.amplicons2} || true")
+    input:
+        reads1=expand("{{sample}}/subset/{amplicon}.fastq", amplicon=poolone),
+        amplicons1=expand("{{sample}}/assemblies/{amplicon}.fa", amplicon=poolone),
+        reads2=expand("{{sample}}/subset/{amplicon}.fastq", amplicon=pooltwo),
+        amplicons2=expand("{{sample}}/assemblies/{amplicon}.fa", amplicon=pooltwo)
+    output:
+        reads1="{sample}/poolone.fastq.gz",
+        amplicons1="{sample}/poolone.fa",
+        reads2="{sample}/pooltwo.fastq.gz",
+        amplicons2="{sample}/pooltwo.fa"
+    log:
+        stdout="logs/pool/{sample}_stdout.log",
+        stderr="logs/pool/{sample}_stderr.log"
+    benchmark:
+        "benchmarks/pool/{sample}_benchmark.txt"
+    threads: 1
+    message:
+        "Pooling reads and amplicons for sample {wildcards.sample}."
+    shell:
+        """
+        cat {input.reads1} | gzip > {output.reads1} || true
+        cat {input.amplicons1} > {output.amplicons1} || true
+        cat {input.reads2} | gzip > {output.reads2} || true
+        cat {input.amplicons2} > {output.amplicons2} || true
+        """
+
 
 rule medaka:
-        output:
-                file="{sample}/medaka/medaka1_{n}/consensus.fasta"
-        input:
-                assembly="{sample}/{n}.fa",
-                reads="{sample}/{n}.fastq.gz"
-        params:
-                outdir="{sample}/medaka/medaka1_{n}/",
-                model=medaka_model
-        threads: 8
-        shell:
-                "medaka_consensus -f -g -t {threads} -i {input.reads} -d {input.assembly} -o {params.outdir} -m {params.model} "
-
-rule medaka2:
-        output:
-                file="{sample}/medaka/medaka2_{n}/consensus.fasta"
-        input:
-                assembly="{sample}/medaka/medaka1_{n}/consensus.fasta",
-                reads="{sample}/{n}.fastq.gz"
-        params:
-                outdir="{sample}/medaka/medaka2_{n}/",
-                model=medaka_model
-        threads: 8
-        shell:
-                "medaka_consensus -f -g -t {threads} -i {input.reads} -d {input.assembly} -o {params.outdir} -m {params.model}"
-
-rule medaka3:
-        output:
-                file="{sample}/medaka/medaka3_{n}/consensus.fasta"
-        input:
-                assembly="{sample}/medaka/medaka2_{n}/consensus.fasta",
-                reads="{sample}/{n}.fastq.gz"
-        params:
-                outdir="{sample}/medaka/medaka3_{n}/",
-                model=medaka_model
-        threads: 8
-        shell:
-                "medaka_consensus -f -t {threads} -g -i {input.reads} -d {input.assembly} -o {params.outdir} -m {params.model} "
+    output:
+        file="{sample}/medaka/medaka{stage}_{n}/consensus.fasta"
+    input:
+        assembly=lambda wildcards: "{sample}/" + (f"medaka/medaka{int(wildcards.stage) - 1}_{wildcards.n}/consensus.fasta" if int(wildcards.stage) > 1 else f"{wildcards.n}.fa"),
+        reads="{sample}/{n}.fastq.gz"
+    params:
+        outdir="{sample}/medaka/medaka{stage}_{n}/",
+        model=medaka_model
+    threads: THREADS_MULTI
+    log:
+        stdout="logs/medaka/{sample}_medaka{stage}_{n}_stdout.log",
+        stderr="logs/medaka/{sample}_medaka{stage}_{n}_stderr.log"
+    benchmark:
+        "benchmarks/medaka/{sample}_medaka{stage}_{n}_benchmark.txt"
+    message:
+        "Running Medaka stage {wildcards.stage} on sample {wildcards.sample}, amplicon {wildcards.n}."
+    conda:
+        "envs/medaka.yaml"
+    shell:
+        """
+        medaka_consensus -f -g -t {threads} -i {input.reads} -d {input.assembly} -o {params.outdir} -m {params.model}
+        """
 
 rule combine:
-	output:
-		ampli="{sample}/polished_amplicons.fa"
-	input:
-		list=expand("{{sample}}/medaka/medaka3_{n}/consensus.fasta", n=["poolone", "pooltwo"])
-	shell:
-		"""touch {input.list}
-		cat {input.list} > {output.ampli}"""
+    input:
+        list=expand("{{sample}}/medaka/medaka3_{n}/consensus.fasta", n=["poolone", "pooltwo"])
+    output:
+        ampli="{sample}/polished_amplicons.fa"
+    threads: 1  # This operation doesn't really benefit from multi-threading
+    log:
+        stdout="logs/combine/{sample}_stdout.log",
+        stderr="logs/combine/{sample}_stderr.log"
+    benchmark:
+        "benchmarks/combine/{sample}_benchmark.txt"
+    message:
+        "Combining polished amplicons for sample {wildcards.sample}."
+    shell:
+        """
+		cat {input.list} > {output.ampli}
+		"""
+
 
 rule minimap_clip:
-        output:
-                contigs="{sample}/polished_clipped_amplicons.fa"
-        input:
-                consensus="{sample}/polished_amplicons.fa",
-                ref=reference
-        params:
-                len=min(lengths)*0.8
-        shell:
-                """minimap2 {input.ref} {input.consensus} | awk -v OFS="\\t" '{{if ($4-$3>= {params.len}) {{print $1, $3+10, $4-10}}}}' - | bedtools sort -i - | bedtools getfasta -fi {input.consensus} -bed - > {output.contigs}"""
+    input:
+        consensus="{sample}/polished_amplicons.fa",
+        ref=reference
+    output:
+        contigs="{sample}/polished_clipped_amplicons.fa"
+    params:
+        len=config['clip_length_cutoff'] * min(lengths)
+    threads: THREADS_MULTI
+    log:
+        stdout="logs/minimap_clip/{sample}_stdout.log",
+        stderr="logs/minimap_clip/{sample}_stderr.log"
+    benchmark:
+        "benchmarks/minimap_clip/{sample}_benchmark.txt"
+    message:
+        "Running minimap2 and clipping contigs for sample {wildcards.sample}."
+    conda:
+        "envs/minimap_clip.yaml"
+    shell:
+        """
+		minimap2 -t {threads} {input.ref} {input.consensus} | \
+        awk -v OFS="\\t" '{{if ($4-$3 >= {params.len}) {{print $1, $3+10, $4-10}}}}' - | \
+        bedtools sort -i - | \
+        bedtools getfasta -fi {input.consensus} -bed - > {output.contigs}
+		"""
 
 rule reporechop:
-        output:
-                trimmed="{sample}/polished_trimmed.fa"
-        input:
-                reads="{sample}/polished_clipped_amplicons.fa",
-                prim=primers
-        threads: 8
-        shell:
-                "porechop --adapter_threshold 72 --end_threshold 70 --end_size 30 --extra_end_trim 5 --min_trim_size 3 -f {input.prim} -i {input.reads} --threads {threads} --no_split -o {output.trimmed}"
+    input:
+        reads="{sample}/polished_clipped_amplicons.fa",
+        prim=primers
+    output:
+        trimmed="{sample}/polished_trimmed.fa"
+    params:
+        adapter_threshold=config['adapter_threshold'],
+        end_threshold=config['end_threshold'],
+        end_size=config['end_size'],
+        extra_end_trim=config['extra_end_trim'],
+        min_trim_size=config['min_trim_size']
+    threads: THREADS_MULTI
+    log:
+        stdout="logs/reporechop/{sample}_stdout.log",
+        stderr="logs/reporechop/{sample}_stderr.log"
+    benchmark:
+        "benchmarks/reporechop/{sample}_benchmark.txt"
+    message:
+        "Running porechop for adapter and end trimming on sample {wildcards.sample}."
+    shell:
+        """
+        porechop \
+        --adapter_threshold {params.adapter_threshold} \
+        --end_threshold {params.end_threshold} \
+        --end_size {params.end_size} \
+        --extra_end_trim {params.extra_end_trim} \
+        --min_trim_size {params.min_trim_size} \
+        -f {input.prim} \
+        -i {input.reads} \
+        --threads {threads} \
+        --no_split \
+        -o {output.trimmed} \
+        """
 
 rule scaffold:
-	output:
-		scaffold="{sample}_Scaffold.fasta"
-	input:
-		contigs="{sample}/polished_trimmed.fa",
-		ref=reference
-	params:
-		prefix="{sample}",
-		name=">{sample}_Lilo_scaffold",
-		ol=int(expected_overlap*1.5)	
-	shell:
-		"""source $CONDA_PREFIX/etc/profile.d/conda.sh
-		conda activate scaffold_builder
-		scaffold_builder.py -i 75 -t {params.ol} -g 80000 -r {input.ref} -q {input.contigs} -p {params.prefix}
-		sed -i '1 s/^.*$/{params.name}/' {params.prefix}_Scaffold.fasta"""
-
-
+    input:
+        contigs="{sample}/polished_trimmed.fa",
+        ref=reference
+    output:
+        scaffold="{sample}_Scaffold.fasta"
+    params:
+        prefix="{sample}",
+        name=">{sample}_Lilo_scaffold",
+        ol=int(expected_overlap*1.5),
+        i=config["scaffold_i"],
+        g=config["scaffold_g"]
+    threads: 1
+    log:
+        "logs/scaffold/{sample}.log"
+    benchmark:
+        "benchmarks/scaffold/{sample}.benchmark"
+    message:
+        "Scaffolding sample {wildcards.sample}"
+    conda:
+        "envs/scaffold.yaml"
+    shell:
+        """
+		scaffold_builder.py -i {params.i} -t {params.ol} -g {params.g} -r {input.ref} -q {input.contigs} -p {params.prefix}
+        sed -i '1 s/^.*$/{params.name}/' {output.scaffold}
+		"""
